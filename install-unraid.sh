@@ -12,14 +12,40 @@ if docker container inspect scanmail >/dev/null 2>&1; then
   echo 'Se README.md for genstart og opdatering.'
   exit 1
 fi
+plugin_source="${SCANMAIL_PLUGIN_SOURCE:-hp}"
+case "$plugin_source" in
+  hp|openprinting) ;;
+  *) echo 'SCANMAIL_PLUGIN_SOURCE skal være hp eller openprinting.'; exit 1 ;;
+esac
 docker build -t "$image_base" .
 printf '\nInstaller nu HP-pluginet. Læs og besvar HP-guidens spørgsmål.\n'
-printf 'Vælg download, og accepter kun licensen, hvis du er enig.\n\n'
+if [[ "$plugin_source" == openprinting ]]; then
+  printf 'Henter versionsmatchende plugin og signatur fra OpenPrinting via HTTPS.\n'
+  printf 'HP-guiden åbnes med lokal fil. Accepter kun licensen, hvis du er enig.\n'
+else
+  printf 'Vælg download, og accepter kun licensen, hvis du er enig.\n'
+fi
+printf 'Stop ved signaturfejl. Svar nej, hvis guiden tilbyder installation uden kontrol.\n\n'
 trap 'docker rm -f "$setup_container" >/dev/null 2>&1 || true' EXIT
-docker run --name "$setup_container" --user 0:0 --entrypoint sh -it "$image_base" -c '
+docker run --name "$setup_container" --user 0:0 --env "SCANMAIL_PLUGIN_SOURCE=$plugin_source" --entrypoint sh -it "$image_base" -c '
   set -eu
   export HOME=/root
-  hp-plugin -i
+  if [ "$SCANMAIL_PLUGIN_SOURCE" = openprinting ]; then
+    cd /usr/share/hplip
+    hp_version=$(python3 -c "from base.g import prop; print(prop.installed_version)")
+    plugin_dir=$(mktemp -d /tmp/scanmail-plugin.XXXXXX)
+    plugin_name="hplip-${hp_version}-plugin.run"
+    for suffix in "" .asc; do
+      wget --https-only --timeout=30 --tries=2 \
+        -O "$plugin_dir/$plugin_name$suffix" \
+        "https://www.openprinting.org/download/printdriver/auxfiles/HP/plugins/$plugin_name$suffix"
+      test -s "$plugin_dir/$plugin_name$suffix"
+    done
+    hp-plugin -i -p "$plugin_dir/$plugin_name"
+    rm -rf "$plugin_dir"
+  else
+    hp-plugin -i
+  fi
   test -f /var/lib/hp/hplip.state
   find /usr/share/hplip/scan/plugins -name "bb_marvell*.so" -type f | grep -q .
 '
