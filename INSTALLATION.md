@@ -33,3 +33,24 @@ Docker og HP-plugin-installationen er endnu ikke kørt i udviklingsmiljøet.
 Ved fejl: gem fejltekst og trin, men fjern adgangskoder og dokumentindhold.
 Se README for backup, opdatering og gendannelse. Kør ikke installationen over en
 aktiv container; scriptet stopper, hvis `scanmail` allerede findes.
+
+## Hvis HP-download svarer 403 eller netværkstesten fejler
+
+OpenPrinting har et alternativt arkiv med HP-plugin og tilhørende signatur:
+https://www.openprinting.org/download/printdriver/auxfiles/HP/plugins/
+
+Opdater koden og vælg denne kilde:
+
+```bash
+git pull --ff-only
+SCANMAIL_PLUGIN_SOURCE=openprinting bash install-unraid.sh
+```
+
+Scriptet aflæser HPLIP-versionen fra base-imaget og henter både .run og .run.asc
+med HTTPS-certifikatkontrol. Derefter starter HP's interaktive guide med lokal fil,
+så den fejlslagne forbindelsestest i download-menuen undgås. Licensaccept er stadig
+dit valg. Svar nej og stop, hvis guiden ikke kan hente signeringsnøglen eller
+tilbyder installation uden signaturkontrol. Send da fejlteksten uden hemmeligheder.
+
+Denne installationsgren er syntakskontrolleret og testet med simulerede downloads
+og plugin-guide; den er endnu ikke kørt med en rigtig HP-plugininstallation her.
