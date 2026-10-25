@@ -72,7 +72,7 @@ class RuntimeTests(unittest.TestCase):
             docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_LOG"\n'
                               'case "$1" in inspect) echo sha256:test;; build) exit 1;; esac\n')
             docker.chmod(0o700)
-            script = (ROOT / 'repair-unraid.sh').read_text().replace('/mnt/user/appdata/scanmail', str(work))
+            script = (ROOT / 'update-unraid.sh').read_text().replace('/mnt/user/appdata/scanmail', str(work))
             (work / 'repair.sh').write_text(script)
             result = subprocess.run(['bash', str(work / 'repair.sh')], capture_output=True,
                                     env=dict(os.environ, PATH=str(work) + ':' + os.environ['PATH'], TEST_LOG=str(log)))

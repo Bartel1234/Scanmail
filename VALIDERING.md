@@ -1,51 +1,40 @@
-# Validering af ScanMail 0.2.0
+# Validering – ScanMail 0.3.0
 
 ## Bestået i udviklingsmiljøet
 
-- 19 offline-test med Python 3.12, Pillow 12.3 og ReportLab.
-- Login, begrænsning af loginforsøg, sessionudløb, logout, Origin og CSRF.
-- Adskillelse af dokumenter ved læsning, download, sletning og afsendelse.
-- Simuleret scanimage, ægte JPEG-forhåndsvisning og to-siders PDF med kontrolleret sidestørrelse.
-- Gendannelse af joboplysninger ved genindlæsning; scannerlås, timeout og manglende driver/plugin.
-- Indstillinger med filrettighed 600; hemmeligheden udelades fra API-svar.
-- SMTP STARTTLS/implicit TLS med certifikatkontrol; ingen login efter fejlet TLS.
-- Afvist mail-login, uklar levering, gentagen afsendelse, mailheaders og QUIT-fejl efter accept.
-- Oprydning af inaktive dokumenter og bevarelse af igangværende scanning.
-- Python-, JavaScript- og Bash-syntaks.
+32 Python-test, Node-test af frontend-flow, Python-/JavaScript-/Bash-syntaks.
 
-HTTP-handlerne køres med rå HTTP-forespørgsler gennem en hukommelsestransport.
-Ingen faktisk TCP-server, browser, scanner eller SMTP-server indgår i disse test.
+- Login, sessionsudløb, logud, loginbegrænsning, Origin og CSRF.
+- Dokumentisolering, inkl. nyt preview, redigering og PDF-klargøring.
+- Simuleret scanning, hardwarelås, timeout, manglende driver og pluginfejl.
+- Rotation, rækkefølge, sletning, ugyldige positioner, gamle revisioner og låste jobs.
+- Ægte multipage-PDF'er med kontrolleret sidestørrelse, rotation og billedrækkefølge.
+- Lille fil giver under halvdelen af filstørrelsen på testbilledet, med samme fysiske
+  sidestørrelse. Forholdet er dokumentafhængigt og er ikke et løfte for alle scans.
+- Rigtig Tesseract genkendte engelsk tekst, der kunne udtrækkes fra PDF med pypdf.
+  Det usynlige tekstlag, OCR-cache ved kvalitetsskift og OCR-timeout testes også.
+- SMTP TLS-rækkefølge og certifikatkontrol, loginfejl, dobbeltforsendelse og uklar
+  levering, mailheaderkontrol og QUIT-fejl efter accepteret DATA.
+- Brugerpost og privat D-Bus-start med mocks; ingen login/opstart hvis busstart fejler.
+- Hele opdateringsscriptet køres mod en Docker-simulator: build-/preflight-/smoke-fejl
+  berører ikke den gamle app; run-/healthfejl gendanner den gamle container og restart-policy.
+- JavaScript køres i en simuleret DOM: favoritter, frivillig browserlagring, preview,
+  zoom, redigering, dobbeltklik på Send, næste dokument og uklar levering.
 
-## Ikke afprøvet
+Testenes HTTP-transport er i hukommelsen. Scanner og SMTP simuleres. Den rigtige
+OCR-test bruger engelsk tekst; dansk sprogpakke installeres og kontrolleres af
+opdateringen, men genkendelseskvaliteten på danske scans skal vurderes på Unraid.
 
-Docker-adgang er afvist af udviklingsmiljøet (operation not permitted på
-/var/run/docker.sock). Image-build og runtime, Debian-pakkernes konkrete versioner,
-HP's plugin-download/signatur/licensguide, Unraid WebUI/autostart og gendannelse
-fra image-arkiv skal afprøves på Unraid. Der er ikke omgået nogen adgangsbegrænsning.
+## Begrænsninger
 
-Printer-IP, SANE-enhedsnavn, modes og DPI er konfigureret ud fra prototypen og er
-ikke hardwarebekræftet. Følg INSTALLATION.md: først scannerforbindelse og fysisk
-PDF-download, derefter Gmail-mailtest. Responsivt layout er bevaret, men ikke
-visuelt browsertestet her. Versionen er en testkandidat, ikke en hardwarevalideret udgivelse.
+Docker-socket-adgang afvises i udviklingsmiljøet. Chromium findes, men kunne ikke
+starte under miljøets begrænsninger. Der er derfor ikke udført Docker-build,
+0.3.0 hardwaretest, faktisk browser-/mobil-layouttest eller Gmail-test her.
 
-## Ændringer siden 0.1.0
+På brugerens netværk blev 0.2.0-valg af scanner, modes/DPI, scanning og mail bekræftet
+fungerende efter rettelse af Unix-bruger og privat D-Bus. De rettelser er bevaret.
+Ny kode, OCR-pakker og opdateringsscriptet skal stadig valideres på Unraid.
 
-Uklar SMTP-levering låser dokumentet. Bekræftet DATA-accept bevares ved fejl i QUIT.
-Frontend gendanner modes/DPI og rydder preview ved logout. Scannerfejl viser ikke
-rå driverfejl; mailfejl viser ikke serverens potentielt følsomme svar. Dokument-
-adgang opdaterer aktivitetstid. Samtidige HTTP-arbejdere, socketventetid, pixelantal,
-scannerens outputfil og samlet dokumentlager er begrænset. Installer gemmer nu et
-lokalt image-arkiv uden brugerens SMTP-konto og kræver plugin-state før snapshot.
-
-
-## Opfølgning fra brugerens Unraid 25. oktober 2026
-
-- Base-image blev bygget og websiden blev startet efter rettelse af entrypoint.
-- Driveren åbner M176n og viser Gray/Color og 150/300 dpi som understøttet.
-- Scanning fejlede med 139, når UID 1000 manglede i /etc/passwd.
-- Med brugerpost ændredes fejlen til 134 og en manglende D-Bus-forbindelse.
-- Med brugerpost og privat bus gennemførtes fysisk Gray/150-dpi scan med exitkode 0.
-- Fem nye offline-test kontrollerer brugerpost, privat bus, fejlet opstart og at
-  reparationsscriptet ikke stopper appen ved fejlet build. I alt 19 består.
-- Det permanente image, read-only bus-kontrol og reparationsscript afventer
-  brugerens kørsel. Browser-preview/PDF, Color/300 dpi og Gmail er ikke bekræftet.
+Opdateringen foretager selv en rigtig lokal D-Bus-kontrol, en OCR/PDF-prøve og
+HTTP-opstart i en container uden netværk, før den gamle app stoppes. Efter skiftet
+kontrolleres healthz igen. Ingen scanner eller mailserver kontaktes automatisk.

@@ -2,10 +2,10 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 data_dir=/mnt/user/appdata/scanmail
-image_base=scanmail:0.2.0-base
-image_ready=scanmail:0.2.0-hp
+image_base=scanmail:0.3.0-base
+image_ready=scanmail:0.3.0-hp
 setup_container="scanmail-driver-setup-$$"
-printf '\nScanMail 0.2.0 · HP M176n · 172.16.60.252\n\n'
+printf '\nScanMail 0.3.0 · HP M176n · 172.16.60.252\n\n'
 command -v docker >/dev/null || { echo 'Docker er ikke tilgængelig. Kør dette fra Unraid-terminalen.'; exit 1; }
 if docker container inspect scanmail >/dev/null 2>&1; then
   echo 'Containeren scanmail findes allerede. Stop her for at beskytte installationen.'
@@ -63,8 +63,8 @@ mkdir -p "$archive_dir"
 chmod 700 "$archive_dir"
 # Unraid can recreate docker.img. Keep the licensed local image on persistent storage.
 umask 077
-docker image save "$image_ready" | gzip > "$archive_dir/scanmail-0.2.0-hp.tar.gz.tmp"
-mv "$archive_dir/scanmail-0.2.0-hp.tar.gz.tmp" "$archive_dir/scanmail-0.2.0-hp.tar.gz"
+docker image save "$image_ready" | gzip > "$archive_dir/scanmail-0.3.0-hp.tar.gz.tmp"
+mv "$archive_dir/scanmail-0.3.0-hp.tar.gz.tmp" "$archive_dir/scanmail-0.3.0-hp.tar.gz"
 mkdir -p "$data_dir"
 chmod 700 "$data_dir"
 chown 1000:1000 "$data_dir"

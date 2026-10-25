@@ -1,0 +1,14 @@
+ARG SCANMAIL_PARENT_IMAGE=scanmail:driver-parent
+FROM ${SCANMAIL_PARENT_IMAGE}
+USER 0:0
+# Keep the user's licensed driver and matching HPLIP version intact.
+RUN apt-mark hold hplip hplip-data libsane-hpaio libhpmud0 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-dan tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+COPY app/ /app/
+RUN python3 /app/ensure_identity.py
+ENV HOME=/tmp
+USER 1000:1000
+ENTRYPOINT ["python3"]
+CMD ["/app/runtime.py"]

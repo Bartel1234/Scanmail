@@ -1,73 +1,54 @@
-# ScanMail 0.2.0 – kort installationsguide
+# ScanMail 0.3.0 – kort guide til Unraid
 
-1. Pak mappen ud på DeathStar, fx `/mnt/user/appdata/scanmail-source/scanmail-v0.2.0`.
-2. Åbn Unraid-terminalen:
+## Du har allerede en fungerende ScanMail
 
-   ```bash
-   cd /mnt/user/appdata/scanmail-source/scanmail-v0.2.0
-   bash install-unraid.sh
-   ```
-
-3. HP-pluginets tekstguide åbner. Læs licensen og accepter selv, hvis du er enig.
-   Stop ved download- eller signaturfejl; godkend aldrig at springe kontrollen over.
-   Guiden skal hente et plugin til præcis den installerede HPLIP-version.
-4. Vælg webadgangskode. Åbn `http://DIN-UNRAID-IP:8788` på dit betroede LAN.
-5. **Test scanner først:** Log ind → Indstillinger → Test scanner. Kontrollér at
-   output viser den rigtige M176n på `172.16.60.252` og understøtter Color/Gray og
-   150/300 dpi. En test, der åbner enheden, beviser endnu ikke at scanning virker.
-6. Læg papir på glasset. Scan én side. Kontrollér preview og download PDF.
-   Tilføj en anden side og kontrollér rækkefølge i PDF. Afprøv begge modes og DPI.
-7. Først derefter: Opsæt Gmail lokalt med `smtp.gmail.com`, port `587`, STARTTLS,
-   hele mailadressen og en Google-app-adgangskode. Del aldrig adgangskoden i chat.
-8. Send én PDF til dig selv. Kontrollér indbakke/spam og vedhæftningen. Ved uklar
-   levering låses dokumentet; kontrollér modtagelse før du starter et nyt dokument.
-9. Genstart containeren og kontrollér login, gemte indstillinger og scanner igen.
-   Scans skal være væk efter genstart. Kontrollér også Unraid-autostart efter reboot.
-
-Åbn ingen routerporte. Til lokal HTTPS kan du anvende en eksisterende lokal
-reverse proxy med et certifikat dine enheder stoler på. Bevar Host-header,
-videresend til port 8788 og tilføj `COOKIE_SECURE=1` i runtime.env; genskab
-containeren for at indlæse ændringen. Brug herefter altid HTTPS-adressen.
-
-Docker og HP-plugin-installationen er endnu ikke kørt i udviklingsmiljøet.
-Ved fejl: gem fejltekst og trin, men fjern adgangskoder og dokumentindhold.
-Se README for backup, opdatering og gendannelse. Kør ikke installationen over en
-aktiv container; scriptet stopper, hvis `scanmail` allerede findes.
-
-## Hvis HP-download svarer 403 eller netværkstesten fejler
-
-OpenPrinting har et alternativt arkiv med HP-plugin og tilhørende signatur:
-https://www.openprinting.org/download/printdriver/auxfiles/HP/plugins/
-
-Opdater koden og vælg denne kilde:
+Download først de scannede dokumenter, du vil beholde. Opdateringen genstarter
+containeren, så midlertidige scans og login-sessioner forsvinder.
 
 ```bash
+cd /mnt/user/appdata/scanmail-source/Scanmail
 git pull --ff-only
+bash update-unraid.sh
+```
+
+Scriptet genbruger dit HP-plugin og bevarer appdata, favoritter og adgangskoder.
+Det installerer OCR, tester den nye app før skift, gemmer en backup af den gamle
+container og ruller tilbage, hvis den nye ikke starter. Det rydder ikke selv gamle
+backup-containere. Første kørsel kan tage flere minutter.
+
+Åbn http://172.16.61.213:8788 (eller din Unraid-IP), genindlæs og log ind igen.
+
+## Kontrol efter opdatering
+
+1. Scan én side og tryk på preview. Kontrollér Zoom ind og Luk.
+2. Tilføj en anden side. Rotér, flyt rækkefølgen og slet en side. Kontrollér PDF.
+3. Vælg Lille fil, og sammenlign den viste størrelse med Høj kvalitet.
+4. Slå OCR til. Vent på klargøring. Download PDF og kontrollér, at tekst kan søges
+   og kopieres. Dansk OCR bør testes med æ, ø og å samt dine egne dokumenter.
+5. Kontrollér en favoritknap. Prøv frivilligt Husk seneste modtager; slå det fra
+   igen for at slette den lokale adresse på en delt enhed.
+6. Send én mail til dig selv. Kontrollér indbakke og PDF. Tryk Scan nyt dokument,
+   og kontrollér at scannevalgene åbnes igen.
+7. Test Color/Gray, 150/300 dpi og genstart. Ingen fysisk test køres automatisk
+   af opdateringsscriptet, og det sender aldrig en prøvemail på egen hånd.
+
+## Første installation
+
+```bash
+mkdir -p /mnt/user/appdata/scanmail-source
+cd /mnt/user/appdata/scanmail-source
+git clone https://github.com/Bartel1234/Scanmail.git
+cd Scanmail
 SCANMAIL_PLUGIN_SOURCE=openprinting bash install-unraid.sh
 ```
 
-Scriptet aflæser HPLIP-versionen fra base-imaget og henter både .run og .run.asc
-med HTTPS-certifikatkontrol. Derefter starter HP's interaktive guide med lokal fil,
-så den fejlslagne forbindelsestest i download-menuen undgås. Licensaccept er stadig
-dit valg. Svar nej og stop, hvis guiden ikke kan hente signeringsnøglen eller
-tilbyder installation uden signaturkontrol. Send da fejlteksten uden hemmeligheder.
+Læs og accepter selv HP-pluginets licens. Stop ved download-/signaturfejl eller
+hvis signeringsnøglen ikke kan hentes. Vælg aldrig installation uden kontrol.
+Vælg derefter webadgangskode og åbn `http://DIN-UNRAID-IP:8788`.
 
-Denne installationsgren er syntakskontrolleret og testet med simulerede downloads
-og plugin-guide; den er endnu ikke kørt med en rigtig HP-plugininstallation her.
+Første fysiske kontrol: Indstillinger → Test scanner, derefter en ægte scanning
+og PDF-download. Printeren er 172.16.60.252. Først derefter opsættes Gmail lokalt
+med smtp.gmail.com, port 587, STARTTLS og en Google-app-adgangskode. Del ikke koden.
 
-
-## Eksisterende installation: scannercrash 139/134
-
-Kør i projektmappen:
-
-```bash
-git pull --ff-only
-bash repair-unraid.sh
-```
-
-Dette genbruger dit lokale HP-plugin og appdata. Den gamle container gemmes som
-backup, og det rettede image gemmes på appdata-share. Den private D-Bus og
-brugerposten testes før udskiftning. HP-pluginet skal ikke installeres igen.
-Når health-testen svarer ok, prøv Scan første side i browseren og download PDF.
-Gray/150-dpi virker i den isolerede fysiske test; den permanente app, Color/300-dpi,
-flersiders PDF og Gmail skal stadig kontrolleres på dit netværk.
+Se README for lokal HTTPS, backup og manuel tilbagerulning. Ingen routerporte
+skal åbnes, og Unraids D-Bus skal ikke monteres ind i containeren.

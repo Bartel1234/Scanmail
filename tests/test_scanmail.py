@@ -91,9 +91,9 @@ class ScanMailTests(unittest.TestCase):
 
     def wait_job(self, job):
         deadline = time.monotonic() + 5
-        while job['status'] in ('scanning', 'sending') and time.monotonic() < deadline:
+        while job['status'] in ('scanning', 'sending', 'processing') and time.monotonic() < deadline:
             time.sleep(.01)
-        self.assertNotIn(job['status'], ('scanning', 'sending'))
+        self.assertNotIn(job['status'], ('scanning', 'sending', 'processing'))
 
     def test_login_csrf_origin_logout(self):
         self.assertEqual(self.request('/api/settings')[0], 401)
@@ -146,6 +146,8 @@ class ScanMailTests(unittest.TestCase):
             self.wait_job(job)
         session = self.request('/api/session', cookie=cookie)[1]
         self.assertEqual((session['job']['dpi'], session['job']['mode']), (150, 'Gray'))
+        self.assertEqual(self.request('/api/prepare', {'job_id': job['id']}, cookie, csrf)[0], 202)
+        self.wait_job(job)
         pdf = self.request('/api/jobs/' + job['id'] + '/pdf', cookie=cookie)[1]
         self.assertTrue(pdf.startswith(b'%PDF-'))
         self.assertEqual(len(re.findall(rb'/Type /Page\b', pdf)), 2)

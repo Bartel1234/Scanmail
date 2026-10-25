@@ -1,9 +1,0 @@
-ARG SCANMAIL_PARENT_IMAGE=scanmail:0.2.0-driver-parent
-FROM ${SCANMAIL_PARENT_IMAGE}
-USER 0:0
-COPY app/ensure_identity.py app/runtime.py /app/
-RUN python3 /app/ensure_identity.py
-ENV HOME=/tmp
-USER 1000:1000
-ENTRYPOINT ["python3"]
-CMD ["/app/runtime.py"]

@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pil python3-reportlab hplip libsane-hpaio sane-utils \
-    ca-certificates gnupg dirmngr wget dbus python3-dbus util-linux \
+    ca-certificates gnupg dirmngr wget dbus python3-dbus util-linux tesseract-ocr tesseract-ocr-dan tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data && chown 1000:1000 /data \
     && printf 'hpaio\n' > /etc/sane.d/dll.conf

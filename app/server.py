@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local ScanMail server. Standard library + Pillow; hardware through SANE."""
 import hashlib
+import csv
 import hmac
 import io
 import ipaddress
@@ -23,9 +24,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from PIL import Image, ImageDraw
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-VERSION = '0.2.0'
+VERSION = '0.3.0'
 DATA = Path(os.environ.get('DATA_DIR', '/data'))
 DATA.mkdir(parents=True, exist_ok=True)
 CONFIG = DATA / 'settings.json'
@@ -43,6 +45,7 @@ MAX_STORAGE = 256 * 1024 * 1024
 WORK = Path(tempfile.mkdtemp(prefix='scanmail-'))
 LOCK = threading.RLock()
 HARDWARE = threading.Lock()
+PDF_LOCK = threading.Lock()
 SESSIONS = {}
 FAILURES = {}
 JOBS = {}
@@ -119,7 +122,7 @@ def cleanup():
                 del FAILURES[key]
         for key in list(JOBS):
             job = JOBS[key]
-            if job['updated'] < now - 3600 and job['status'] not in ('scanning', 'sending'):
+            if job['updated'] < now - 3600 and job['status'] not in ('scanning', 'sending', 'processing'):
                 shutil.rmtree(WORK / key, ignore_errors=True)
                 del JOBS[key]
 
@@ -134,8 +137,95 @@ def get_job(job_id, owner, touch=True):
         return job
 
 
+def page_order(job):
+    return job.get('order', list(range(1, job['pages'] + 1)))
+
+
+def invalidate_pdf(job):
+    job['revision'] = job.get('revision', 0) + 1
+    job['pdf_ready'] = False
+    job['pdf_bytes'] = 0
+    (WORK / job['id'] / 'document.pdf').unlink(missing_ok=True)
+
+
 def job_info(job):
-    return {key: job[key] for key in ('id', 'status', 'pages', 'error', 'dpi', 'mode', 'sent', 'delivery_uncertain')}
+    info = {key: job[key] for key in ('id', 'status', 'pages', 'error', 'dpi', 'mode', 'sent', 'delivery_uncertain')}
+    info.update(revision=job.get('revision', 0), quality=job.get('quality', 'high'),
+                ocr=job.get('ocr', False), progress=job.get('progress', ''),
+                pdf_ready=job.get('pdf_ready', False), pdf_bytes=job.get('pdf_bytes', 0))
+    size = sum((WORK / job['id'] / f'{i}.jpg').stat().st_size
+               for i in page_order(job) if (WORK / job['id'] / f'{i}.jpg').exists())
+    info['estimated_bytes'] = int(size * (0.5 if info['quality'] == 'small' else 1.05)) + 1500 * job['pages']
+    return info
+
+
+def editable(job):
+    if job['status'] in ('scanning', 'sending', 'processing'):
+        raise ValueError('Vent til den igangværende opgave er færdig.')
+    if job['sent'] or job['delivery_uncertain']:
+        raise ValueError('Start et nyt dokument efter afsendelse eller uklar levering.')
+
+
+def edit_document(job, data):
+    editable(job)
+    # Reject edits from a stale browser tab before interpreting page positions.
+    if type(data.get('revision')) is not int or data['revision'] != job.get('revision', 0):
+        raise ValueError('Dokumentet er ændret. Genindlæs det før du redigerer.')
+    operation = data.get('action')
+    order = list(page_order(job))
+    if operation in ('rotate', 'delete', 'move'):
+        n = data.get('page')
+        if type(n) is not int or not 1 <= n <= len(order):
+            raise ValueError('Ugyldig side.')
+        index = n - 1
+        identity = order[index]
+        if operation == 'rotate':
+            rotations = job.setdefault('rotations', {})
+            rotations[identity] = (rotations.get(identity, 0) + 90) % 360
+        elif operation == 'delete':
+            order.pop(index)
+            folder = WORK / job['id']
+            (folder / f'{identity}.jpg').unlink(missing_ok=True)
+            (folder / f'thumb-{identity}.jpg').unlink(missing_ok=True)
+            for file in folder.glob(f'ocr-{identity}-*.tsv'):
+                file.unlink(missing_ok=True)
+            job['pages'] = len(order)
+        else:
+            destination = data.get('destination')
+            if type(destination) is not int or not 1 <= destination <= len(order):
+                raise ValueError('Ugyldig placering.')
+            order.insert(destination - 1, order.pop(index))
+        job['order'] = order
+    elif operation == 'options':
+        quality = data.get('quality', job.get('quality', 'high'))
+        ocr = data.get('ocr', job.get('ocr', False))
+        if quality not in ('high', 'small') or type(ocr) is not bool:
+            raise ValueError('Vælg en gyldig PDF-kvalitet og OCR-indstilling.')
+        if ocr and not shutil.which('tesseract'):
+            raise ValueError('OCR mangler. Kør update-unraid.sh for at installere tekstgenkendelse.')
+        job.update(quality=quality, ocr=ocr)
+    else:
+        raise ValueError('Ugyldig sidehandling.')
+    invalidate_pdf(job)
+    job.update(status='ready', error='', updated=time.time())
+    return job_info(job)
+
+
+def oriented_image(job, identity, thumbnail=False):
+    name = f'thumb-{identity}.jpg' if thumbnail else f'{identity}.jpg'
+    with Image.open(WORK / job['id'] / name) as source:
+        image = source.convert('RGB')
+    degrees = job.get('rotations', {}).get(identity, 0)
+    if degrees:
+        rotated = image.rotate(-degrees, expand=True)
+        image.close()
+        image = rotated
+    return image
+
+
+def storage_check():
+    if sum(f.stat().st_size for f in WORK.rglob('*') if f.is_file()) > MAX_STORAGE:
+        raise ValueError('Lagergrænsen er nået. Slet dokumenter eller brug færre sider.')
 
 
 def scanner_error(detail):
@@ -150,6 +240,7 @@ def scanner_error(detail):
 def scan_page(job):
     path = WORK / job['id']
     raw = path / 'current.png'
+    identity = job.get('next_page', max(page_order(job), default=0) + 1)
     try:
         if DEMO:
             image = Image.new('RGB', (1240, 1754), '#ffffff')
@@ -171,16 +262,19 @@ def scan_page(job):
             if source.width * source.height > Image.MAX_IMAGE_PIXELS:
                 raise ValueError('Scanningen er for stor. Brug 150 dpi eller kontrollér driveren.')
             image = source.convert('RGB')
-        image.save(path / f"{job['pages'] + 1}.jpg", 'JPEG', quality=88)
+        image.save(path / f"{identity}.jpg", 'JPEG', quality=94)
         image.thumbnail((440, 620))
-        image.save(path / f"thumb-{job['pages'] + 1}.jpg", 'JPEG', quality=80)
+        image.save(path / f"thumb-{identity}.jpg", 'JPEG', quality=80)
         image.close()
         with LOCK:
             if sum(f.stat().st_size for f in WORK.rglob('*') if f.is_file()) > MAX_STORAGE:
-                (path / f"{job['pages'] + 1}.jpg").unlink(missing_ok=True)
-                (path / f"thumb-{job['pages'] + 1}.jpg").unlink(missing_ok=True)
+                (path / f"{identity}.jpg").unlink(missing_ok=True)
+                (path / f"thumb-{identity}.jpg").unlink(missing_ok=True)
                 raise ValueError('Lagergrænsen er nået. Slet dokumenter eller brug færre sider.')
+            job['order'] = list(page_order(job)) + [identity]
+            job['next_page'] = identity + 1
             job['pages'] += 1
+            invalidate_pdf(job)
             job['status'] = 'ready'
             job['error'] = ''
     except subprocess.TimeoutExpired:
@@ -215,7 +309,7 @@ def start_scan(owner, data):
                 job = get_job(data['job_id'], owner)
                 if job['sent'] or job['delivery_uncertain']:
                     raise ValueError('Start et nyt dokument efter afsendelse eller uklar levering.')
-                if job['status'] in ('scanning', 'sending') or job['pages'] >= 20:
+                if job['status'] in ('scanning', 'sending', 'processing') or job['pages'] >= 20:
                     raise ValueError('Dokumentet er optaget eller har nået grænsen på 20 sider.')
                 if dpi != job['dpi'] or mode != job['mode']:
                     raise ValueError('Brug samme farve og opløsning på dokumentets sider.')
@@ -225,7 +319,9 @@ def start_scan(owner, data):
                 job_id = secrets.token_hex(16)
                 (WORK / job_id).mkdir(mode=0o700)
                 job = {'id': job_id, 'owner': owner, 'pages': 0, 'dpi': dpi, 'mode': mode,
-                       'status': 'ready', 'error': '', 'updated': time.time(), 'sent': False, 'delivery_uncertain': False}
+                       'status': 'ready', 'error': '', 'updated': time.time(), 'sent': False, 'delivery_uncertain': False,
+                       'order': [], 'next_page': 1, 'revision': 0, 'rotations': {},
+                       'quality': 'high', 'ocr': False, 'pdf_ready': False, 'pdf_bytes': 0}
                 JOBS[job_id] = job
             job.update(status='scanning', error='', sent=False, updated=time.time())
             info = job_info(job)
@@ -236,20 +332,107 @@ def start_scan(owner, data):
         raise
 
 
+def ocr_words(job, identity, image):
+    folder = WORK / job['id']
+    rotation = job.get('rotations', {}).get(identity, 0)
+    cache = folder / f'ocr-{identity}-{rotation}.tsv'
+    if not cache.exists():
+        source = folder / 'ocr-input.png'
+        temporary = folder / 'ocr-output.tmp'
+        try:
+            image.save(source)
+            # TSV contains document text: write only into private ephemeral work storage.
+            with temporary.open('wb') as output:
+                result = subprocess.run([
+                    'prlimit', '--fsize=8388608', '--as=536870912', '--',
+                    'tesseract', str(source), 'stdout', '-l', 'dan+eng',
+                    '--dpi', str(job['dpi']), 'tsv',
+                ], stdout=output, stderr=subprocess.PIPE, timeout=90,
+                    env={**os.environ, 'OMP_THREAD_LIMIT': '1'})
+            if result.returncode:
+                raise ValueError('Tekstgenkendelse fejlede. Kontrollér at dansk og engelsk OCR er installeret, eller slå OCR fra.')
+            storage_check()
+            os.replace(temporary, cache)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            raise ValueError('OCR mangler eller tog for lang tid. Slå OCR fra, eller prøv færre sider.') from None
+        finally:
+            source.unlink(missing_ok=True)
+            temporary.unlink(missing_ok=True)
+    words = []
+    with cache.open(encoding='utf-8', errors='replace', newline='') as file:
+        for row in csv.DictReader(file, delimiter='\t'):
+            try:
+                text = row['text'].strip()[:512]
+                left, top, width, height = [int(row[key]) for key in ('left', 'top', 'width', 'height')]
+                if text and float(row['conf']) >= 0 and 0 <= left < image.width and 0 <= top < image.height and width > 0 and height > 0:
+                    words.append((left, top, width, height, text))
+            except (KeyError, ValueError, TypeError):
+                continue
+    return words
+
+
 def make_pdf(job):
     if not job['pages']:
         raise ValueError('Scan mindst én side først.')
-    output = io.BytesIO()
-    document = canvas.Canvas(output, pageCompression=1)
-    for i in range(1, job['pages'] + 1):
-        path = WORK / job['id'] / f'{i}.jpg'
-        with Image.open(path) as image:
-            width, height = [pixels * 72 / job['dpi'] for pixels in image.size]
-        document.setPageSize((width, height))
-        document.drawImage(str(path), 0, 0, width=width, height=height)
-        document.showPage()
-    document.save()
-    return output.getvalue()
+    destination = WORK / job['id'] / 'document.pdf'
+    with PDF_LOCK:
+        if job.get('pdf_ready') and destination.exists():
+            return destination.read_bytes()
+        output = io.BytesIO()
+        document = canvas.Canvas(output, pageCompression=1)
+        small = job.get('quality', 'high') == 'small'
+        for index, identity in enumerate(page_order(job), 1):
+            with LOCK:
+                job['progress'] = f"{'Tekstgenkendelse' if job.get('ocr') else 'Klargør PDF'} · side {index} af {job['pages']}"
+            with oriented_image(job, identity) as image:
+                width, height = [pixels * 72 / job['dpi'] for pixels in image.size]
+                words = ocr_words(job, identity, image) if job.get('ocr') else []
+                if small:
+                    image.thumbnail((max(1, round(width / 72 * 150)), max(1, round(height / 72 * 150))))
+                buffer = io.BytesIO()
+                image.save(buffer, 'JPEG', quality=55 if small else 94, optimize=True)
+                buffer.seek(0)
+                document.setPageSize((width, height))
+                document.drawImage(ImageReader(buffer), 0, 0, width=width, height=height)
+                if words:
+                    scale = 72 / job['dpi']
+                    for left, top, word_width, word_height, text in words:
+                        layer = document.beginText()
+                        layer.setTextRenderMode(3)  # Invisible, searchable/copyable text.
+                        font_size = max(1, word_height * scale)
+                        layer.setFont('Helvetica', font_size)
+                        layer.setTextOrigin(left * scale, height - (top + word_height) * scale)
+                        measured = document.stringWidth(text, 'Helvetica', font_size)
+                        if measured:
+                            layer.setHorizScale(word_width * scale / measured * 100)
+                        layer.textOut(text)
+                        document.drawText(layer)
+                document.showPage()
+        document.save()
+        payload = output.getvalue()
+        temporary = destination.with_suffix('.tmp')
+        try:
+            temporary.write_bytes(payload)
+            storage_check()
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        with LOCK:
+            job.update(pdf_ready=True, pdf_bytes=len(payload), progress='')
+        return payload
+
+
+def prepare_document(job):
+    try:
+        make_pdf(job)
+        with LOCK:
+            job.update(status='ready', error='')
+    except Exception as exc:
+        with LOCK:
+            job.update(status='error', error=str(exc) if isinstance(exc, ValueError) else 'PDF kunne ikke klargøres. Prøv uden OCR eller med færre sider.', progress='')
+    finally:
+        with LOCK:
+            job['updated'] = time.time()
 
 
 def smtp_send(settings, message):
@@ -382,21 +565,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({'error': 'Log ind for at fortsætte.'}, 401)
         cleanup()
         if path == '/api/settings':
-            return self.reply({**public_settings(), 'scanner_ip': SCANNER_IP})
-        match = re.fullmatch(r'/api/jobs/([a-f0-9]{32})(?:/(pdf|thumb/\d+))?', path)
+            return self.reply({**public_settings(), 'scanner_ip': SCANNER_IP, 'ocr_available': bool(shutil.which('tesseract'))})
+        match = re.fullmatch(r'/api/jobs/([a-f0-9]{32})(?:/(pdf|thumb/\d+|preview/\d+))?', path)
         if match:
             with LOCK:
                 job = get_job(match[1], token)
                 if not match[2]:
                     return self.reply(job_info(job))
                 if match[2] == 'pdf':
-                    if job['status'] in ('scanning', 'sending'):
+                    if job['status'] in ('scanning', 'sending', 'processing'):
                         return self.reply({'error': 'Vent til dokumentet er klar.'}, 409)
-                    return self.reply(make_pdf(job), mime='application/pdf', headers={'Content-Disposition': 'attachment; filename="scanning.pdf"'})
+                    if not job.get('pdf_ready'):
+                        return self.reply({'error': 'Klargør PDF først.'}, 409)
+                    return self.reply((WORK / job['id'] / 'document.pdf').read_bytes(), mime='application/pdf', headers={'Content-Disposition': 'attachment; filename="scanning.pdf"'})
                 n = int(match[2].split('/')[1])
                 if n < 1 or n > job['pages']:
                     raise ValueError('Ugyldig side')
-                return self.reply((WORK / job['id'] / f'thumb-{n}.jpg').read_bytes(), mime='image/jpeg')
+                identity = page_order(job)[n - 1]
+                with oriented_image(job, identity, thumbnail=match[2].startswith('thumb/')) as image:
+                    image.thumbnail((1800, 2400))
+                    output = io.BytesIO()
+                    image.save(output, 'JPEG', quality=90)
+                return self.reply(output.getvalue(), mime='image/jpeg')
         self.reply({'error': 'Siden findes ikke.'}, 404)
 
     def do_POST(self):
@@ -457,7 +647,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 SESSIONS.pop(token, None)
                 for job in list(JOBS.values()):
-                    if job['owner'] == token and job['status'] not in ('scanning', 'sending'):
+                    if job['owner'] == token and job['status'] not in ('scanning', 'sending', 'processing'):
                         shutil.rmtree(WORK / job['id'], ignore_errors=True)
                         del JOBS[job['id']]
             return self.reply({'ok': True}, headers={'Set-Cookie': 'scanmail=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})
@@ -480,10 +670,22 @@ class Handler(BaseHTTPRequestHandler):
                 HARDWARE.release()
         if path == '/api/scan':
             return self.reply(start_scan(token, data), 202)
+        if path in ('/api/edit', '/api/prepare'):
+            with LOCK:
+                job = get_job(data['job_id'], token)
+                if path == '/api/edit':
+                    return self.reply(edit_document(job, data))
+                editable(job)
+                if not job['pages']:
+                    raise ValueError('Scan mindst én side først.')
+                job.update(status='processing', error='', progress='Venter på PDF-klargøring …')
+                info = job_info(job)
+            threading.Thread(target=prepare_document, args=(job,), daemon=True).start()
+            return self.reply(info, 202)
         if path in ('/api/send', '/api/delete'):
             with LOCK:
                 job = get_job(data['job_id'], token)
-                if job['status'] in ('scanning', 'sending'):
+                if job['status'] in ('scanning', 'sending', 'processing'):
                     raise ValueError('Vent til den igangværende opgave er færdig.')
                 if path == '/api/delete':
                     shutil.rmtree(WORK / job['id'])
@@ -497,6 +699,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Levering er uklar. Afsendelse er låst. Kontrollér modtagerens indbakke før du starter et nyt dokument.')
                 if job['sent']:
                     raise ValueError('Dokumentet er allerede sendt. Start et nyt dokument for en ny forsendelse.')
+                if 'revision' in data and data['revision'] != job.get('revision', 0):
+                    raise ValueError('Dokumentet er ændret. Genindlæs før afsendelse.')
                 recipient = email_address(data.get('recipient', ''))
                 subject = str(data.get('subject', '')).strip()
                 body = str(data.get('body', '')).strip()

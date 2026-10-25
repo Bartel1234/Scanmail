@@ -1,3 +1,5 @@
+> Historisk opgavebeskrivelse fra prototypen. Aktuel version er 0.3.0; se README.md, INSTALLATION.md og VALIDERING.md for nuværende funktioner og teststatus.
+
 # Opgave til Codex — færdiggør ScanMail til Unraid
 
 Vi bygger en lokal, mobilvenlig webapp til min HP Color LaserJet Pro MFP M176n.
