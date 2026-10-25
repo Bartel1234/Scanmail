@@ -54,3 +54,20 @@ tilbyder installation uden signaturkontrol. Send da fejlteksten uden hemmelighed
 
 Denne installationsgren er syntakskontrolleret og testet med simulerede downloads
 og plugin-guide; den er endnu ikke kørt med en rigtig HP-plugininstallation her.
+
+
+## Eksisterende installation: scannercrash 139/134
+
+Kør i projektmappen:
+
+```bash
+git pull --ff-only
+bash repair-unraid.sh
+```
+
+Dette genbruger dit lokale HP-plugin og appdata. Den gamle container gemmes som
+backup, og det rettede image gemmes på appdata-share. Den private D-Bus og
+brugerposten testes før udskiftning. HP-pluginet skal ikke installeres igen.
+Når health-testen svarer ok, prøv Scan første side i browseren og download PDF.
+Gray/150-dpi virker i den isolerede fysiske test; den permanente app, Color/300-dpi,
+flersiders PDF og Gmail skal stadig kontrolleres på dit netværk.

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import signal
 import shutil
 import smtplib
 import ssl
@@ -533,10 +534,15 @@ class BoundedHTTPServer(ThreadingHTTPServer):
             self.slots.release()
 
 
+def sys_exit():
+    raise SystemExit(0)
+
+
 def main():
     if not PASSWORD_HASH or not verify_hash_format(PASSWORD_HASH):
         raise SystemExit('SCANMAIL_PASSWORD_HASH mangler. Brug install-unraid.sh til første opsætning.')
     threading.stack_size(1024 * 1024)
+    signal.signal(signal.SIGTERM, lambda *_: sys_exit())
     server = BoundedHTTPServer(('0.0.0.0', int(os.environ.get('PORT', '8080'))), Handler)
     server.daemon_threads = True
     print(f'ScanMail {VERSION} klar. Scanner: {SCANNER_IP}. Demo: {DEMO}', flush=True)

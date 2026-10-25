@@ -7,7 +7,7 @@ Browseren og Unraid skal kunne nå hinanden. Unraid skal kunne nå printeren ove
 Installation og mailafsendelse kræver udgående internetadgang.
 
 **Status: testet med simuleret scanner og SMTP; afventer installationstest på Unraid.**
-11 automatiske test består. Python-, JavaScript- og Bash-syntaks er kontrolleret.
+19 automatiske test består. Python-, JavaScript- og Bash-syntaks er kontrolleret.
 Testene afvikler HTTP-handlerne via en hukommelsestransport og laver rigtige PDF-filer;
 de åbner ingen netværksporte og sender ingen mail. Docker-klienten findes i udviklingsmiljøet,
 men adgang til Docker-tjenesten er afvist. Derfor er image-build, HP-plugin, read-only
@@ -173,3 +173,30 @@ containeren eller Unraids autostart-indstillinger automatisk.
 - HP om plugin og kravet for M176n-scanning: https://developers.hp.com/hp-linux-imaging-and-printing/binary_plugin.html
 - Google om app-adgangskoder: https://support.google.com/accounts/answer/185833
 - Google om printer/app via SMTP: https://support.google.com/a/answer/176600
+
+
+## Rettelse af scannercrash i den første installation
+
+Den 25. oktober 2026 lykkedes en fysisk Gray/150-dpi scanning på brugerens M176n
+med exitkode 0 efter to rettelser: UID 1000 skal have en passwd-post, og HPLIP skal
+have en D-Bus-forbindelse. Dockerfile opretter nu identiteten, og runtime starter
+sin egen bus på en privat Unix-socket i /tmp. Ingen bus fra Unraid monteres.
+Appen kører stadig som UID/GID 1000 med skrivebeskyttet rodfilsystem.
+
+Ved en eksisterende installation bruges:
+
+```bash
+git pull --ff-only
+bash repair-unraid.sh
+```
+
+Reparationen bygger et lokalt child-image oven på det allerede installerede
+HP-plugin, og foretager en rigtig lokal D-Bus-kontrol i en isoleret testcontainer.
+Først efter bestået kontrol og gemt image-arkiv omdøbes den gamle container til en
+backup og den nye startes. Indstillinger og password-hash bevares. Scans fra den
+gamle container bevares ikke ved genstart. Arkivet hedder
+`/mnt/user/appdata/scanmail-images/scanmail-0.2.0-runtime-fixed.tar.gz`.
+
+Kontrollér herefter preview og PDF-download fra websiden, begge modes/DPI,
+genstart og til sidst Gmail. Den permanente reparationsvej er endnu ikke afprøvet
+på Unraid; 150-dpi/Gray-testen validerer scannerforbindelsen med de to forudsætninger.

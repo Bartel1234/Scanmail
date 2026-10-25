@@ -53,7 +53,7 @@ docker run --name "$setup_container" --user 0:0 --env "SCANMAIL_PLUGIN_SOURCE=$p
 
 # The stopped filesystem can be committed without the user's data or credentials.
 docker commit --change 'USER 1000:1000' --change 'ENTRYPOINT ["python3"]' --change 'ENV HOME=/tmp' \
-  --change 'CMD ["/app/server.py"]' "$setup_container" "$image_ready" >/dev/null
+  --change 'CMD ["/app/runtime.py"]' "$setup_container" "$image_ready" >/dev/null
 docker run --rm --entrypoint sh "$image_ready" -c \
   'find /usr/share/hplip/scan/plugins -name "bb_marvell*.so" -type f | grep -q .'
 docker rm -f "$setup_container" >/dev/null
@@ -87,14 +87,14 @@ if [[ ! -f "$data_dir/runtime.env" ]]; then
   chmod 600 "$data_dir/runtime.env"
   chown 1000:1000 "$data_dir/runtime.env"
 fi
-docker run -d --name scanmail --restart unless-stopped --entrypoint python3 \
+docker run -d --init --name scanmail --restart unless-stopped --entrypoint python3 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp:rw,nosuid,nodev,size=768m,mode=1777 \
   --memory 1536m --cpus 2 --pids-limit 128 --log-opt max-size=5m --log-opt max-file=2 \
   -p 8788:8080 -v "$data_dir:/data" --env-file "$data_dir/runtime.env" \
   --label 'net.unraid.docker.managed=dockerman' \
   --label 'net.unraid.docker.webui=http://[IP]:[PORT:8080]/' \
-  "$image_ready" /app/server.py >/dev/null
+  "$image_ready" /app/runtime.py >/dev/null
 printf '\nScanMail er startet. Åbn http://DIN-UNRAID-IP:8788\n'
 printf 'Log ind, åbn Indstillinger, og tryk Test scanner.\n'
 printf 'Scan først et fysisk dokument og download PDF. Opsæt derefter Gmail lokalt.\n'

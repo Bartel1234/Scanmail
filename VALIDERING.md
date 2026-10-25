@@ -2,7 +2,7 @@
 
 ## Bestået i udviklingsmiljøet
 
-- 11 offline-test med Python 3.12, Pillow 12.3 og ReportLab.
+- 19 offline-test med Python 3.12, Pillow 12.3 og ReportLab.
 - Login, begrænsning af loginforsøg, sessionudløb, logout, Origin og CSRF.
 - Adskillelse af dokumenter ved læsning, download, sletning og afsendelse.
 - Simuleret scanimage, ægte JPEG-forhåndsvisning og to-siders PDF med kontrolleret sidestørrelse.
@@ -36,3 +36,16 @@ rå driverfejl; mailfejl viser ikke serverens potentielt følsomme svar. Dokumen
 adgang opdaterer aktivitetstid. Samtidige HTTP-arbejdere, socketventetid, pixelantal,
 scannerens outputfil og samlet dokumentlager er begrænset. Installer gemmer nu et
 lokalt image-arkiv uden brugerens SMTP-konto og kræver plugin-state før snapshot.
+
+
+## Opfølgning fra brugerens Unraid 25. oktober 2026
+
+- Base-image blev bygget og websiden blev startet efter rettelse af entrypoint.
+- Driveren åbner M176n og viser Gray/Color og 150/300 dpi som understøttet.
+- Scanning fejlede med 139, når UID 1000 manglede i /etc/passwd.
+- Med brugerpost ændredes fejlen til 134 og en manglende D-Bus-forbindelse.
+- Med brugerpost og privat bus gennemførtes fysisk Gray/150-dpi scan med exitkode 0.
+- Fem nye offline-test kontrollerer brugerpost, privat bus, fejlet opstart og at
+  reparationsscriptet ikke stopper appen ved fejlet build. I alt 19 består.
+- Det permanente image, read-only bus-kontrol og reparationsscript afventer
+  brugerens kørsel. Browser-preview/PDF, Color/300 dpi og Gmail er ikke bekræftet.
