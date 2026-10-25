@@ -1,4 +1,4 @@
-# ScanMail 0.3.0 – kort guide til Unraid
+# ScanMail 0.3.1 – kort guide til Unraid
 
 ## Du har allerede en fungerende ScanMail
 
@@ -22,14 +22,16 @@ backup-containere. Første kørsel kan tage flere minutter.
 
 1. Scan én side og tryk på preview. Kontrollér Zoom ind og Luk.
 2. Tilføj en anden side. Rotér, flyt rækkefølgen og slet en side. Kontrollér PDF.
-3. Vælg Lille fil, og sammenlign den viste størrelse med Høj kvalitet.
-4. Slå OCR til. Vent på klargøring. Download PDF og kontrollér, at tekst kan søges
+3. Åbn en side → Markér udsnit. Træk en ramme → Brug udsnit. Kontrollér PDF,
+   prøv Hele siden, og kontrollér beskæring efter rotation.
+4. Vælg Lille fil, og sammenlign den viste størrelse med Høj kvalitet.
+5. Slå OCR til. Vent på klargøring. Download PDF og kontrollér, at tekst kan søges
    og kopieres. Dansk OCR bør testes med æ, ø og å samt dine egne dokumenter.
-5. Kontrollér en favoritknap. Prøv frivilligt Husk seneste modtager; slå det fra
+6. Kontrollér en favoritknap. Prøv frivilligt Husk seneste modtager; slå det fra
    igen for at slette den lokale adresse på en delt enhed.
-6. Send én mail til dig selv. Kontrollér indbakke og PDF. Tryk Scan nyt dokument,
+7. Send én mail til dig selv. Kontrollér indbakke og PDF. Tryk Scan nyt dokument,
    og kontrollér at scannevalgene åbnes igen.
-7. Test Color/Gray, 150/300 dpi og genstart. Ingen fysisk test køres automatisk
+8. Test Color/Gray, 150/300 dpi og genstart. Ingen fysisk test køres automatisk
    af opdateringsscriptet, og det sender aldrig en prøvemail på egen hånd.
 
 ## Første installation

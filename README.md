@@ -1,4 +1,4 @@
-# ScanMail 0.3.0 – fra papir til indbakke
+# ScanMail 0.3.1 – fra papir til indbakke
 
 Lokal, mobilvenlig app til HP Color LaserJet Pro MFP M176n på **172.16.60.252**.
 Kører på Unraid/DeathStar. Scan sider fra glasset, gennemgå dem, download én PDF,
@@ -32,7 +32,23 @@ nye version er fysisk testet. Scriptet rydder dem ikke automatisk.
 Åbn derefter **http://172.16.61.213:8788** (eller din Unraid-IP). Genindlæs siden,
 log ind og test scanning, preview og PDF-download før mail.
 
-## Nyt i denne version
+## Markér kun det, du vil have med
+
+Tryk på en scannet side → **Markér udsnit**. Træk en rektangulær ramme med
+fingeren eller musen, og vælg **Brug udsnit**. Du kan også angive de fire kanter
+i procent. PDF og OCR indeholder derefter kun det valgte område; sidens format
+bliver tilpasset udsnittet. Beskæringen gælder den enkelte side.
+
+**Hele siden** nulstiller en gemt beskæring. **Annuller** forlader redigeringen uden
+at ændre udsnittet. Rotation og ændret siderækkefølge bevarer beskæringen. Efter
+ændringen klargøres PDF/OCR automatisk igen. Beskæring låses efter afsendelse.
+
+Den oprindelige scanning bevares i containerens private midlertidige lager, så du
+kan nulstille. Den følger ikke med i PDF'en eller mailen og slettes med dokumentet
+eller ved genstart/oprydning. Beskæring er derfor ikke permanent sletning af
+originaldata fra en stadig aktiv session.
+
+## Øvrige funktioner
 
 1. **Efter afsendelse:** en tydelig kvittering og knappen **Scan nyt dokument**.
    Scan og afsendelse af det gamle dokument låses for at undgå dubletter.
@@ -159,7 +175,7 @@ bash -n install-unraid.sh
 ```
 
 Docker-tjenesten er utilgængelig i udviklingsmiljøet. Den nye Docker-build og det
-fysiske 0.3.0-flow skal derfor kontrolleres på Unraid. 0.2.0 med rettet bruger/D-Bus
+fysiske 0.3.1-flow skal derfor kontrolleres på Unraid. 0.2.0 med rettet bruger/D-Bus
 blev af brugeren bekræftet fungerende til scanning og mail.
 
 Kilder: [HP-plugin](https://developers.hp.com/hp-linux-imaging-and-printing/binary_plugin.html),

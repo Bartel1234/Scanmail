@@ -1,4 +1,4 @@
-> Historisk opgavebeskrivelse fra prototypen. Aktuel version er 0.3.0; se README.md, INSTALLATION.md og VALIDERING.md for nuværende funktioner og teststatus.
+> Historisk opgavebeskrivelse fra prototypen. Aktuel version er 0.3.1; se README.md, INSTALLATION.md og VALIDERING.md for nuværende funktioner og teststatus.
 
 # Opgave til Codex — færdiggør ScanMail til Unraid
 

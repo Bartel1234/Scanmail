@@ -1,8 +1,8 @@
-# Validering – ScanMail 0.3.0
+# Validering – ScanMail 0.3.1
 
 ## Bestået i udviklingsmiljøet
 
-32 Python-test, Node-test af frontend-flow, Python-/JavaScript-/Bash-syntaks.
+37 Python-test, Node-test af frontend-flow, Python-/JavaScript-/Bash-syntaks.
 
 - Login, sessionsudløb, logud, loginbegrænsning, Origin og CSRF.
 - Dokumentisolering, inkl. nyt preview, redigering og PDF-klargøring.
@@ -29,7 +29,7 @@ opdateringen, men genkendelseskvaliteten på danske scans skal vurderes på Unra
 
 Docker-socket-adgang afvises i udviklingsmiljøet. Chromium findes, men kunne ikke
 starte under miljøets begrænsninger. Der er derfor ikke udført Docker-build,
-0.3.0 hardwaretest, faktisk browser-/mobil-layouttest eller Gmail-test her.
+0.3.1 hardwaretest, faktisk browser-/mobil-layouttest eller Gmail-test her.
 
 På brugerens netværk blev 0.2.0-valg af scanner, modes/DPI, scanning og mail bekræftet
 fungerende efter rettelse af Unix-bruger og privat D-Bus. De rettelser er bevaret.
@@ -38,3 +38,16 @@ Ny kode, OCR-pakker og opdateringsscriptet skal stadig valideres på Unraid.
 Opdateringen foretager selv en rigtig lokal D-Bus-kontrol, en OCR/PDF-prøve og
 HTTP-opstart i en container uden netværk, før den gamle app stoppes. Efter skiftet
 kontrolleres healthz igen. Ingen scanner eller mailserver kontaktes automatisk.
+
+
+## Beskæring i 0.3.1
+
+Fem ekstra Python-test kontrollerer billedets pixels og PDF-sidestørrelse,
+nulstilling uden ødelæggelse af originalen, rotation/reordering, ugyldige og gamle
+koordinater, CSRF og dokumentisolering. En rigtig OCR-test genkender først hele
+siden og derefter et udsnit; PDF-tekst og indlejret billede indeholder efter
+beskæring kun udsnittet. Gamle OCR-cacher kasseres ved beskæring/nulstilling.
+
+Frontend-testen simulerer træk i begge retninger, nulstilling, procentfelter og
+ugyldige udsnit. I alt består 37 Python-test og frontend-testen. Rigtig touch-
+og musebetjening samt det endelige layout skal stadig kontrolleres på Unraid.

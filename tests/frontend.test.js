@@ -10,7 +10,8 @@ class Element {
   constructor() {
     this.children = []; this.childNodes = this.children; this.listeners = {}; this.attributes = {};
     this.value = ''; this.checked = false; this.hidden = false; this.disabled = false; this.textContent = '';
-    this.classes = new Set();
+    this.classes = new Set(); this.style = {};
+    this.offsetLeft=0; this.offsetTop=0; this.clientWidth=600; this.clientHeight=300;
     this.classList = {add:x=>this.classes.add(x), remove:x=>this.classes.delete(x),
       toggle:x=>{ if(this.classes.has(x)){this.classes.delete(x);return false;} this.classes.add(x);return true; }};
   }
@@ -22,6 +23,9 @@ class Element {
   removeAttribute(key) { delete this.attributes[key]; if(key==='src') delete this.src; }
   close() { this.open=false; this.listeners.close?.(); }
   showModal() { this.open=true; }
+  getBoundingClientRect() { return {left:0,top:0,width:600,height:300}; }
+  setPointerCapture() {}
+  releasePointerCapture() {}
   focus() { this.focused=true; }
   scrollIntoView() { this.scrolled=true; }
 }
@@ -39,7 +43,7 @@ const context=vm.createContext({
   fetch: async (url, options={}) => {
     const data=options.body?JSON.parse(options.body):undefined; requests.push({url,data});
     let value;
-    if(url==='/api/session') value={authenticated:false,csrf:'',version:'0.3.0',demo:false};
+    if(url==='/api/session') value={authenticated:false,csrf:'',version:'0.3.1',demo:false};
     else if(url==='/api/settings') value=settings;
     else if(url==='/api/edit') {remoteJob={...remoteJob,revision:remoteJob.revision+1,pdf_ready:false};value=remoteJob;}
     else if(url==='/api/prepare') {remoteJob={...remoteJob,status:'processing'};value=remoteJob;}
@@ -79,6 +83,35 @@ const setJob = patch => {
   assert.equal(elements['zoom-preview'].attributes['aria-pressed'],'true');
   elements['close-preview'].listeners.click();
   assert.equal(elements['large-page'].src,undefined);
+  setJob(); run('openPreview(1)');
+  elements['start-crop'].listeners.click();
+  assert.match(elements['large-page'].src,/\/full\/1\?v=1$/);
+  assert.equal(elements['apply-crop'].disabled,true);
+  elements['large-page'].listeners.load();
+  assert.equal(elements['crop-overlay'].hidden,false);
+  const pointer=(x,y)=>({clientX:x,clientY:y,pointerId:7,button:0,preventDefault(){}});
+  // Drag backwards to exercise normalization, then save the selection.
+  elements['crop-overlay'].listeners.pointerdown(pointer(480,240));
+  elements['crop-overlay'].listeners.pointermove(pointer(120,60));
+  elements['crop-overlay'].listeners.pointerup(pointer(120,60));
+  assert.equal(elements['crop-left'].value,'20');
+  assert.equal(elements['crop-bottom'].value,'80');
+  await elements['apply-crop'].listeners.click();
+  const cropRequest=requests.findLast(x=>x.url==='/api/edit').data;
+  assert.equal(cropRequest.action,'crop');
+  assert.deepEqual(cropRequest.box,[.2,.2,.8,.8]);
+  setJob({crop_boxes:[[.2,.2,.8,.8],[0,0,1,1]]});run('openPreview(1)');
+  elements['start-crop'].listeners.click();elements['large-page'].listeners.load();
+  assert.equal(elements['crop-left'].value,'20');
+  await elements['reset-crop'].listeners.click();
+  assert.equal(requests.findLast(x=>x.url==='/api/edit').data.action,'uncrop');
+  setJob(); run('openPreview(1)'); elements['start-crop'].listeners.click();
+  elements['large-page'].listeners.load();elements['crop-left'].value='99.99';
+  elements['crop-left'].listeners.input();
+  assert.equal(elements['apply-crop'].disabled,true);
+  elements['cancel-crop'].listeners.click();
+  assert.equal(elements['crop-overlay'].hidden,true);
+  setJob();
   await run('mutate({action:"rotate",page:1})');
   assert.equal(requests.findLast(x=>x.url==='/api/edit').data.revision,1);
   assert.equal(elements.send.disabled,true);
@@ -102,5 +135,5 @@ const setJob = patch => {
   setJob({delivery_uncertain:true,status:'error'});
   assert.equal(elements.send.disabled,true);
   assert.equal(elements.scan.disabled,true);
-  console.log('Frontend flows passed: favorites, opt-in storage, preview/zoom, edits, double-submit lock, next document, uncertain delivery.');
+  console.log('Frontend flows passed: favorites, opt-in storage, preview/zoom, drag cropping/reset/validation, edits, double-submit lock, next document, uncertain delivery.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -6,6 +6,7 @@ import hmac
 import io
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,7 +28,7 @@ from PIL import Image, ImageDraw
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 DATA = Path(os.environ.get('DATA_DIR', '/data'))
 DATA.mkdir(parents=True, exist_ok=True)
 CONFIG = DATA / 'settings.json'
@@ -141,6 +142,29 @@ def page_order(job):
     return job.get('order', list(range(1, job['pages'] + 1)))
 
 
+def rotate_box(box, turns):
+    left, top, right, bottom = box
+    for _ in range(turns % 4):
+        left, top, right, bottom = 1 - bottom, left, 1 - top, right
+    return [round(value, 8) for value in (left, top, right, bottom)]
+
+
+def displayed_crop(job, identity):
+    return rotate_box(job.get('crops', {}).get(identity, [0, 0, 1, 1]),
+                      job.get('rotations', {}).get(identity, 0) // 90)
+
+
+def validate_crop(box):
+    if not isinstance(box, list) or len(box) != 4:
+        raise ValueError('Markér et rektangulært område på siden.')
+    if any(type(value) not in (int, float) or not math.isfinite(value) for value in box):
+        raise ValueError('Ugyldigt udsnit.')
+    left, top, right, bottom = box
+    if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1) or right - left < .001 or bottom - top < .001:
+        raise ValueError('Udsnittet er for lille eller ligger uden for siden.')
+    return box
+
+
 def invalidate_pdf(job):
     job['revision'] = job.get('revision', 0) + 1
     job['pdf_ready'] = False
@@ -152,7 +176,8 @@ def job_info(job):
     info = {key: job[key] for key in ('id', 'status', 'pages', 'error', 'dpi', 'mode', 'sent', 'delivery_uncertain')}
     info.update(revision=job.get('revision', 0), quality=job.get('quality', 'high'),
                 ocr=job.get('ocr', False), progress=job.get('progress', ''),
-                pdf_ready=job.get('pdf_ready', False), pdf_bytes=job.get('pdf_bytes', 0))
+                pdf_ready=job.get('pdf_ready', False), pdf_bytes=job.get('pdf_bytes', 0),
+                crop_boxes=[displayed_crop(job, identity) for identity in page_order(job)])
     size = sum((WORK / job['id'] / f'{i}.jpg').stat().st_size
                for i in page_order(job) if (WORK / job['id'] / f'{i}.jpg').exists())
     info['estimated_bytes'] = int(size * (0.5 if info['quality'] == 'small' else 1.05)) + 1500 * job['pages']
@@ -173,13 +198,24 @@ def edit_document(job, data):
         raise ValueError('Dokumentet er ændret. Genindlæs det før du redigerer.')
     operation = data.get('action')
     order = list(page_order(job))
-    if operation in ('rotate', 'delete', 'move'):
+    if operation in ('rotate', 'delete', 'move', 'crop', 'uncrop'):
         n = data.get('page')
         if type(n) is not int or not 1 <= n <= len(order):
             raise ValueError('Ugyldig side.')
         index = n - 1
         identity = order[index]
-        if operation == 'rotate':
+        if operation in ('crop', 'uncrop'):
+            box = validate_crop(data.get('box')) if operation == 'crop' else None
+            crops = job.setdefault('crops', {})
+            if operation == 'uncrop':
+                crops.pop(identity, None)
+            else:
+                # Editor coordinates describe the full rotated page; store in source coordinates.
+                turns = job.get('rotations', {}).get(identity, 0) // 90
+                crops[identity] = rotate_box(box, -turns)
+            for file in (WORK / job['id']).glob(f'ocr-{identity}-*.tsv'):
+                file.unlink(missing_ok=True)
+        elif operation == 'rotate':
             rotations = job.setdefault('rotations', {})
             rotations[identity] = (rotations.get(identity, 0) + 90) % 360
         elif operation == 'delete':
@@ -211,10 +247,20 @@ def edit_document(job, data):
     return job_info(job)
 
 
-def oriented_image(job, identity, thumbnail=False):
+def oriented_image(job, identity, thumbnail=False, full=False):
     name = f'thumb-{identity}.jpg' if thumbnail else f'{identity}.jpg'
     with Image.open(WORK / job['id'] / name) as source:
         image = source.convert('RGB')
+    box = job.get('crops', {}).get(identity)
+    if box and not full:
+        left, top, right, bottom = box
+        width, height = image.size
+        pixels = (max(0, int(left * width)), max(0, int(top * height)),
+                  min(width, max(int(left * width) + 1, math.ceil(right * width))),
+                  min(height, max(int(top * height) + 1, math.ceil(bottom * height))))
+        cropped = image.crop(pixels)
+        image.close()
+        image = cropped
     degrees = job.get('rotations', {}).get(identity, 0)
     if degrees:
         rotated = image.rotate(-degrees, expand=True)
@@ -566,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
         cleanup()
         if path == '/api/settings':
             return self.reply({**public_settings(), 'scanner_ip': SCANNER_IP, 'ocr_available': bool(shutil.which('tesseract'))})
-        match = re.fullmatch(r'/api/jobs/([a-f0-9]{32})(?:/(pdf|thumb/\d+|preview/\d+))?', path)
+        match = re.fullmatch(r'/api/jobs/([a-f0-9]{32})(?:/(pdf|thumb/\d+|preview/\d+|full/\d+))?', path)
         if match:
             with LOCK:
                 job = get_job(match[1], token)
@@ -582,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
                 if n < 1 or n > job['pages']:
                     raise ValueError('Ugyldig side')
                 identity = page_order(job)[n - 1]
-                with oriented_image(job, identity, thumbnail=match[2].startswith('thumb/')) as image:
+                with oriented_image(job, identity, thumbnail=match[2].startswith('thumb/'), full=match[2].startswith('full/')) as image:
                     image.thumbnail((1800, 2400))
                     output = io.BytesIO()
                     image.save(output, 'JPEG', quality=90)
